@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+int lj_cli(int fd)
+{
+    while(1)
+    {
+        char buff[150] = {0};
+        //printf("请输入字符串：");
+        fgets(buff, 150, stdin);
+
+        char buff2[120] = "EXIT\n";
+        printf("[ECH_RQT]%s", buff);
+        
+        if(strcmp(buff, buff2)==0)
+        {
+            return 0;
+        }
+        write(fd, buff, 120+1);
+
+        //recv
+        char str[6];
+        char str1[150];
+        memset(str,0,sizeof(memset));
+        memset(buff, 0, sizeof(buff));
+        read(fd, buff, sizeof(buff));
+        strncpy(str, buff+1, 5);
+        strncpy(str1, buff+7, 143);
+        printf("%s\n",str);
+        printf("[ECH_REP](%s)%s\n", str, str1);
+    }   
+        return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    char* ip_s_str = argv[1];
+    int port = atoi(argv[2]);
+
+    //socket 
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(fd == -1)
+    {
+        perror("socket");
+        return -1;
+    }
+
+    //IP PORT 连接
+    struct sockaddr_in saddr;
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(port);
+    inet_pton(AF_INET, ip_s_str, &saddr.sin_addr.s_addr);   //将点分十进制的ip地址转化为用于网络传输的数值格式
+    int ret = connect(fd, (struct sockaddr*)&saddr, sizeof(saddr));
+    if(ret == -1)
+    {
+        perror("connect");
+        return -1;
+    }
+    printf("[cli] server[%s:%d] is connected!\n",ip_s_str , port);
+
+    lj_cli(fd);
+
+    //6.close
+    close(fd);
+    printf("[cli] connfd is closed!\n");
+    
+    printf("[cli] is to return!\n");
+    return 0;
+
+}

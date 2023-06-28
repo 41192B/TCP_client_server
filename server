@@ -1,0 +1,121 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <signal.h>
+#include <errno.h>
+
+int sigint_flag = 0;
+
+void lj_sigint(int sig)
+{
+    printf("[srv] SIGNIT is coming!\n");
+    sigint_flag = 1;
+}
+
+int lj_srv(char* key, int cfd, char* ip_c_str, unsigned short a)
+{
+    while(1)
+    {
+        char buff[150];
+        char rbuff[150] ;
+        rbuff[0]='(';
+        rbuff[1]='\0';
+        //printf("%s\n", key);
+        strcat(rbuff, key);
+        int c=read(cfd, buff, sizeof(buff));
+        if(c<=0)
+        {
+            return 0;
+        }
+
+        rbuff[6]=')';
+        
+        rbuff[7]='\0';
+        strcat(rbuff, buff);
+        
+        int rlen = sizeof(rbuff);
+        printf("[ECH_RQT]%s", buff);
+        printf("%s\n",rbuff);
+        write(cfd, rbuff, rlen);
+    }   
+}
+
+int main(int argc, char *argv[])
+{
+    char* ip_s_str = argv[1];
+    char* ip_c_str = NULL;
+    int port = atoi(argv[2]);
+    int key = atoi(argv[3]);
+
+    //安装SIGINT信号处理器
+    struct sigaction sa;
+    sa.sa_flags = 0;
+    sa.sa_handler = lj_sigint;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+
+    //socket 
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(fd == -1)
+    {
+        perror("socket");
+        return -1;
+    }
+
+    //IP PORT绑定
+    struct sockaddr_in saddr;
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(port);
+    inet_pton(AF_INET, ip_s_str, &saddr.sin_addr.s_addr);     //将点分十进制的ip地址转化为用于网络传输的数值格式
+    int ret = bind(fd, (struct sockaddr*)&saddr, sizeof(saddr));
+    if(ret == -1)
+    {
+        perror("bind");
+        return -1;
+    }
+
+    //监听
+    ret = listen(fd, 1);
+    if(ret == -1)
+    {
+        perror("listen");
+        return -1;
+    }
+
+    printf("[srv] server[%s:%d][%d] is initializing!\n", ip_s_str, port, key);
+
+    //请求受理循环
+    while(!sigint_flag)
+    {
+        //accept
+        struct sockaddr_in caddr;
+        int addrlen = sizeof(caddr);
+        int cfd = accept(fd, (struct sockaddr*)&caddr, (socklen_t*)&addrlen);
+        if(cfd == -1)
+        {
+            if(errno == EINTR)
+                continue;
+            else
+            {
+                printf("Error!");
+                exit(1);
+            }
+
+        }
+
+        inet_ntop(AF_INET, &caddr.sin_addr.s_addr, ip_c_str, sizeof(ip_c_str));     //将数值格式转化为点分十进制的ip地址格式
+        printf("[srv] client[%s:%d] is accepted!\n", inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+
+        //调度执行
+        lj_srv(argv[3], cfd, ip_c_str, caddr.sin_port);
+        close(cfd);
+        printf("[srv] client[%s:%d] is closed!\n", inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+
+    }
+
+    //close
+    close(fd);
+    return 0;
+}
